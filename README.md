@@ -37,22 +37,22 @@ public class ZJChain.Block {
      * @throws Exception
      */
     public String calculateHash() throws Exception {
-        String calculatedHash = StringUtil.applySha256(prevHash+data+timestamp);
+        String calculatedHash = StringUtil.applySha512(prevHash+data+timestamp);
         return calculatedHash;
     }
 }
 ```
-* 应用SHA256算法来计算哈希值：
+* 应用SHA512算法来计算哈希值：
 ```java
     /**
-     * 应用SHA256算法接收输入字符串计算并返回哈希字符串
+     * 应用SHA512算法接收输入字符串计算并返回哈希字符串
      * @param input
      * @return
      * @throws Exception
      */
-    public static String applySha256(String input) throws Exception {
-            //返回实现指定摘要算法的 MessageDigest 对象。此处是SHA-256算法
-            MessageDigest digest = MessageDigest.getInstance("SHA-256"); //getInstance有异常
+    public static String applySha512(String input) throws Exception {
+            //返回实现指定摘要算法的 MessageDigest 对象。此处是SHA-512算法
+            MessageDigest digest = MessageDigest.getInstance("SHA-512"); //getInstance有异常
             //根据输入的bytes数组完成哈希计算。
             byte[] hash = digest.digest(input.getBytes("UTF-8"));//getBytes有异常
             StringBuffer hexString = new StringBuffer();
@@ -68,12 +68,7 @@ public class ZJChain.Block {
             }
             return hexString.toString();
     }
-```
-  * SHA256:
-    * SHA256的中文全称叫做“安全哈希算法”。所谓的“哈希”是Hash的音译，而Hash就是进行Hash函数的意思。通常来说，Hash函数的运算有一个共同特点。就是不论原始数据有多少位，只要通过Hash运算后，得到结果的长度都是固定的。
-    * Hash函数的类型有很多种，包括SHA224、SHA256、SHA384、SHA512、SHA512/224、SHA512/256等。但是比特币仅选用了SHA256。这个256代表的意思是，数据经过函数运算后得到的结果必须是一个256位的2进制数字。
-    * 每次Hash计算后得到的结果有三个要求：第一、输入Hash函数之前的数据和通过Hash函数处理过后得到的编号必须一一对应。第二、每一个编号的长度都是固定的。第三、我们无法通过编号倒推出数据的内容。
-  * 因为哈希值的涉及到前一个块的哈希值，时间，数据等，所以哈希链表是无法在中间插入修改的。
+
 
 # 2. 实现区块链（BlockChain）结构
 
@@ -296,11 +291,11 @@ public class Transaction {
     /**
      * 发送方的地址/public key
      */
-    public PublicKey sender;
+    public Long[] strsSender;
     /**
      * 接收方的地址/public key
      */
-    public PublicKey recipient;
+    public Long[] strsrecipient;
     /**
      * 交易额
      */
@@ -308,7 +303,17 @@ public class Transaction {
     /**
      * 发送方的签名
      */
-    public byte[] signature;
+    public float value;
+
+    //C, z1, z2, theta, t0, h0
+    public Long[] Z1;
+    public Long[] Z2;
+    public Long[] theTa;
+    public Long[] T0;
+    public Long[] H0;
+    public Long[][] CI;
+
+    public Long[] newC;
 
     /**
      * 本次交易所涉及到的所有交易输入
@@ -319,11 +324,12 @@ public class Transaction {
      */
     public ArrayList<TransactionOutput> outputs = new ArrayList<TransactionOutput>();
 
-    public Transaction(PublicKey from, PublicKey to, float value, ArrayList<TransactionInput> inputs) {
-        this.sender = from;
-        this.recipient = to;
+    public Transaction(Long[] from, Long[] to, float value, ArrayList<TransactionInput> inputs,Wallet wallet) {
+        this.strsSender = from;
+        this.strsrecipient = to;
         this.value = value;
         this.inputs = inputs;
+        this.wallet = wallet;
     }
 
     /**
@@ -343,17 +349,16 @@ public class Transaction {
      * 根据私钥和其它数据生成数字签名
      * @param privateKey
      */
-    public void generateSignature(PrivateKey privateKey) {
-        String data = StringUtil.getStringFromKey(sender) + StringUtil.getStringFromKey(recipient) + value;
-        signature = StringUtil.applyECDSASig(privateKey, data);
+   public void generateSignature(Integer n,Long q,Long[] h,Long[] f,Long[][] PK,Long[][] Lpk,Long[] miu, Long[] sk1,Long[] sk2) {
+       
     }
 
     /**
      * 检查发送方数字签名，以验证数据没有损坏或者被修改
      * @return
      */
-    public boolean verifySignature() throws Exception {
-        String data = StringUtil.getStringFromKey(sender) + StringUtil.getStringFromKey(recipient) + value;
+    public boolean verifySignature(Wallet wallet) throws Exception {
+        String data = StringUtil.getStringFromKey(strssender) + StringUtil.getStringFromKey(strsrecipient) + value;
         return StringUtil.verifyECDSASig(sender, data, signature);
     }
 
@@ -511,8 +516,11 @@ public class TransactionOutput {
 ```java
 public class Wallet {
     //公私钥
-    public PublicKey publicKey;
-    public PrivateKey privateKey;
+     public Long[] strsPublicKey;
+    //环成员私钥1
+    public Long[] strsPrivateKey1;
+    //环成员私钥2
+    public Long[] strsPrivateKey2;
 
     /**
      * 钱包存储属于自己的UTXO（未消费交易输出）
@@ -643,12 +651,7 @@ public class StringUtil {
         return Base64.getEncoder().encodeToString(key.getEncoded());
     }
 
-    /**
-     * 根据ECDSA算法，由privatekey生成数字签名（字节数组）
-     * @param privateKey
-     * @param data
-     * @return
-     */
+  
     public static byte[] applyECDSASig(PrivateKey privateKey, String data) {
         Signature dsa;
         //提前声明变量，避免最后不能返回有效值
@@ -674,7 +677,7 @@ public class StringUtil {
      * @param signature
      * @return
      */
-    public static boolean verifyECDSASig(PublicKey publicKey, String data, byte[] signature) throws Exception {
+    public boolean verifySignature(Wallet wallet) throws Exception {
             Signature ecdsaVerify = Signature.getInstance("ECDSA", "BC");
             ecdsaVerify.initVerify(publicKey);
             ecdsaVerify.update(data.getBytes());
@@ -998,6 +1001,3 @@ public class ZJChain {
 
         zjChain.isChainValid();
     }
-```
-* 结果：
-![5N08eT](https://gitee.com/zhangjie0524/picgo/raw/master/uPic/5N08eT.png)
