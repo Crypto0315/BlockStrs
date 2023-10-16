@@ -202,35 +202,77 @@ public class ZJChain.ZJChain {
 * Wallet实现：
 ```java
 public class Wallet {
-    public PublicKey publicKey;
-    public PrivateKey privateKey;
+     public Long[] strsPublicKey;
+    //环成员私钥1
+    public Long[] strsPrivateKey1;
+    //环成员私钥2
+    public Long[] strsPrivateKey2;
 
     public Wallet() {
         generateKeyPair();
     }
 
-    /**
-     * 生成公私钥
-     */
-    public void generateKeyPair() {
+   
+      public void generateKeyPair() {
         try {
-            //指定算法ECDSA生成密钥对
-            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("ECDSA", "BC");
-            SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
-            ECGenParameterSpec ecSpec = new ECGenParameterSpec("prime192v1");
-            //初始化并生成密钥对
-            keyGen.initialize(ecSpec, random);
-            KeyPair keyPair = keyGen.generateKeyPair();
-            //获取公私钥
-            privateKey = keyPair.getPrivate();
-            publicKey = keyPair.getPublic();
+            //1.系统建立
+            Long[] h = generateRandomLongArray(n, -q, q);
+            //生成不可约多项式f(x)=x^(n-1)+1
+            Long[] f = generateF(n);
+
+
+            //2.密钥生成
+            Long[] sk1 = generateRandomLongArray(n, -1L, 1L);
+            Long[] sk2 = generateRandomLongArray(n, -1L, 1L);
+
+            //计算pk = s1 + s2*h
+            Long[] sk2h = convolution(sk2, h);
+            PolynomialDivisionResult result = deconv(sk2h, f, q);
+            //deconv 的商
+            //Long[] s2h = result.getQuotient();
+            //deconv 的余数
+            Long[] s2hRemainder = result.getRemainder();
+            //s2h = mod(R(1,n:2*n-1),q);
+            Long[] s2h = mod(s2hRemainder, n, q);
+
+            Long[] pk = addPolynomials(sk1, s2h, q);
+
+            // 创建Lpk数组  Lpk = [PK;randi([-q,q], N-1, n)];  其他成员的公钥
+            Long[][] Lpk = new Long[N - 1][n];
+            // 填充剩余的四行
+            for (int i = 0; i < N - 1; i++) {
+                for (int j = 0; j < n; j++) {
+                    Lpk[i][j] = generateRandomLong(-q, q);
+                }
+            }
+
+            // 创建新的数组，将 pk 复制到新数组的第一行
+            Long[][] PK = new Long[N][n];
+            PK[0] = pk;//签名者本身的公钥
+
+            // 将 Lpk 的内容复制到新数组的后续行
+            for (int i = 1; i < N; i++) {
+                PK[i] = Arrays.copyOf(Lpk[i - 1], n);
+            }
+
+            Long[] miu = generateRandomLongArray(n, -1L, 1L);
+
+            strsPrivateKey1 = sk1;
+            strsPrivateKey2 = sk2;
+            strsPublicKey = pk;
+            mius=miu;
+            PKS=PK;
+            H=h;
+            F=f;
+            LPK=Lpk;
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 }
 ```
-* ECDSA:椭圆曲线数字签名算法（Elliptic Curve Digital Signature Algorithm，缩写ECDSA）是一种被广泛应用于数字签名的加密算法。
+
 
 # 5. 实现交易（Transaction)
 
